@@ -10,6 +10,8 @@ $version = $product.productVersion
 $m2 = Join-Path $repositoryRoot 'out\m2'
 $guiDir = Join-Path $repositoryRoot 'out\m3\x64\Release'
 $adbTools = Join-Path $repositoryRoot '.tools\android-sdk\platform-tools'
+$nugetPackages = Join-Path $repositoryRoot '.tools\nuget-packages'
+$windowsAssets = Join-Path $repositoryRoot 'windows\GnirehtetNg.Gui\obj\project.assets.json'
 $releaseApk = Join-Path $repositoryRoot 'app\build\outputs\apk\release\gnirehtet-ng-release.apk'
 $bundle = Join-Path $repositoryRoot "out\release\GnirehtetNG-$version"
 $zip = Join-Path $repositoryRoot "out\release\GnirehtetNG-$version-windows-x64.zip"
@@ -20,6 +22,7 @@ foreach ($required in @(
         (Join-Path $m2 'gnirehtet-ng.exe'),
         (Join-Path $guiDir 'GnirehtetNg.Gui.exe'),
         (Join-Path $guiDir 'app-icon.ico'),
+        $windowsAssets,
         $releaseApk,
         (Join-Path $adbTools 'adb.exe'),
         (Join-Path $adbTools 'AdbWinApi.dll'),
@@ -27,6 +30,27 @@ foreach ($required in @(
         (Join-Path $adbTools 'NOTICE.txt'))) {
     if (-not (Test-Path -LiteralPath $required)) {
         throw "Required release artifact is missing: $required"
+    }
+}
+
+$libraries = (Get-Content -Raw -LiteralPath $windowsAssets | ConvertFrom-Json).libraries
+$runtimePackages = $libraries.PSObject.Properties | Where-Object {
+    $_.Name -match '^Microsoft\.(WindowsAppSDK(\.[^/]+)?|Windows\.AI\.MachineLearning|Web\.WebView2)/'
+}
+if (-not ($runtimePackages | Where-Object Name -Like 'Microsoft.WindowsAppSDK.Runtime/*')) {
+    throw 'The Windows App SDK runtime is missing from the NuGet restore. Run scripts\build-m3.ps1 -Configuration Release.'
+}
+$runtimeNotices = foreach ($package in $runtimePackages) {
+    $packageDir = Join-Path $nugetPackages $package.Value.path
+    $documents = Get-ChildItem -LiteralPath $packageDir -File | Where-Object {
+        $_.Name -match '^(LICENSE|NOTICE|ThirdPartyNotices)(\.txt)?$'
+    }
+    if (-not ($documents | Where-Object Name -Match '^LICENSE(\.txt)?$')) {
+        throw "License file is missing for $($package.Name). Restore the Windows packages again."
+    }
+    [PSCustomObject]@{
+        Path = $package.Value.path
+        Documents = $documents
     }
 }
 
@@ -79,6 +103,15 @@ Copy-Item -LiteralPath (Join-Path $adbTools 'AdbWinUsbApi.dll') -Destination $ad
 Copy-Item -LiteralPath (Join-Path $adbTools 'NOTICE.txt') -Destination $adbDir
 foreach ($document in @('LICENSE', 'NOTICE', 'docs\deployment.md')) {
     Copy-Item -LiteralPath (Join-Path $repositoryRoot $document) -Destination $bundle
+}
+
+$licenseDirectory = Join-Path $bundle 'licenses'
+foreach ($notice in $runtimeNotices) {
+    $destination = Join-Path $licenseDirectory $notice.Path
+    New-Item -ItemType Directory -Force -Path $destination | Out-Null
+    foreach ($document in $notice.Documents) {
+        Copy-Item -LiteralPath $document.FullName -Destination $destination
+    }
 }
 
 # Use the x64 redistributable files from the build's Visual Studio installation.

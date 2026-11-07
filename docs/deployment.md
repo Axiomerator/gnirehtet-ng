@@ -4,6 +4,11 @@
 
 Extract the Windows x64 portable ZIP from the release assets. Keep the files together. Launch `GnirehtetNg.Gui.exe` or `run.bat`. The folder contains the GUI, Rust controller, CLI and relay, signed Android APK, ADB files, and Windows runtime files.
 
+The project's Apache 2.0 license and attribution are in `LICENSE` and `NOTICE`.
+The bundled ADB notice is in `adb/NOTICE.txt`, and Windows runtime terms and
+notices are under `licenses/`. The app-local VC++ runtime files follow the
+[Visual Studio redistribution terms](https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution).
+
 Enable USB debugging on the phone and authorize the computer. If multiple phones are connected, select the intended device. Click **Start**, then approve the VPN dialog on the phone. The controller installs the bundled app when required. Android allows one active VPN per user, so close another VPN first if it occupies that slot.
 
 ## Controls and cleanup

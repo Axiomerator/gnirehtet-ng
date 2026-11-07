@@ -1,3 +1,5 @@
+// Modified for Gnirehtet NG by the Gnirehtet NG contributors.
+
 package com.genymobile.gnirehtet;
 
 import android.Manifest;

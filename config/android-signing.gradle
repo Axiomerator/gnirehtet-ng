@@ -1,3 +1,5 @@
+// Modified for Gnirehtet NG by the Gnirehtet NG contributors.
+
 // Keep release credentials in the local Gradle user home or in ORG_GRADLE_PROJECT_* variables.
 if (project.hasProperty("RELEASE_STORE_FILE")) {
     android.signingConfigs {

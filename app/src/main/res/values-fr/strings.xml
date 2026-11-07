@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modified for Gnirehtet NG by the Gnirehtet NG contributors. -->
 <resources>
     <string name="notification_channel_description">État du VPN de partage de connexion USB inversé</string>
     <string name="relay_connected">Reverse tethering activé</string>

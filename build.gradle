@@ -1,3 +1,5 @@
+// Modified for Gnirehtet NG by the Gnirehtet NG contributors.
+
 // Top-level build file for the upstream data plane and Gnirehtet NG Android client.
 
 def productProperties = new Properties()

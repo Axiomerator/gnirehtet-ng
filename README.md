@@ -1,5 +1,7 @@
 # Gnirehtet NG
 
+_Modified for Gnirehtet NG by the Gnirehtet NG contributors._
+
 Gnirehtet NG shares a Windows computer's internet connection with an Android phone over USB. The phone uses Android's VPN API, and the computer forwards IPv4 TCP and UDP traffic through ADB. Neither device needs root access.
 
 ## Download and run

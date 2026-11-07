@@ -1,3 +1,4 @@
+<!-- Modified for Gnirehtet NG by the Gnirehtet NG contributors. -->
 <resources>
     <string name="app_name" translatable="false">Gnirehtet NG</string>
     <string name="notification_channel_description">USB reverse tethering VPN status</string>

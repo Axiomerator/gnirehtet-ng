@@ -1,5 +1,7 @@
 # Developing Gnirehtet NG
 
+_Modified for Gnirehtet NG by the Gnirehtet NG contributors._
+
 ## Windows build setup
 
 Use Windows 11 x64 and Visual Studio 2022 with MSBuild, MSVC v143, the UWP C++ component group, and Windows SDK 10.0.26100.0. The repository uses Rust 1.98.0, Java 17, Android SDK 36, and Gradle Wrapper 8.11.1. The PowerShell setup scripts keep their downloads and caches inside the checkout. Run these from the repository root in Windows PowerShell.
@@ -49,6 +51,23 @@ For an end-to-end check, connect one authorized device, approve the VPN prompt, 
    ```
 
 5. Extract `out/release/GnirehtetNG-<version>-windows-x64.zip` to a new folder and smoke-test it on Windows 11. In GitHub Releases, create a tag such as `v0.2.0` at the tested commit and attach the portable ZIP as a release asset. Include the main changes and known limitations in the release notes.
+
+### Redistribution
+
+Use a newly built ZIP for each release. It includes the project's LICENSE and NOTICE,
+the Android Platform-Tools notice under `adb/`, and the license and notice files
+from the restored Windows runtime packages under `licenses/`.
+
+- Review the [Android SDK terms](https://developer.android.com/studio/terms), sections
+  3.4 and 3.5, and the component notices for the ADB binaries you ship.
+- Read section 3 of the bundled Windows App SDK license. Its redistribution terms
+  require distributors and external end users to agree to terms that protect
+  Microsoft and its code at least as much as the SDK terms. Arrange that agreement
+  through the release distribution channel.
+- Use the original x64 VC++ runtime DLLs from the Visual Studio `VC\Redist` tree.
+  Check the terms for the installed Visual Studio edition and the
+  [Visual Studio 2022 redistribution list](https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution)
+  before distribution.
 
 Keep the ZIP, APK, signing files, toolchains, and diagnostic exports out of Git. The source checkout retains the Gradle Wrapper and Cargo lockfile so contributors can use the same build inputs.
 

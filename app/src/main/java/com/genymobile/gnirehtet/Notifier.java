@@ -9,6 +9,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -117,18 +118,25 @@ public class Notifier {
     }
 
     private Notification.Action createStopAction() {
-        Intent stopIntent = new Intent(context, MainActivity.class)
-                .setAction(GnirehtetActivity.ACTION_GNIREHTET_STOP);
+        Intent stopIntent = new Intent(context, StopReceiver.class);
         int flags = PendingIntent.FLAG_ONE_SHOT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             flags |= PendingIntent.FLAG_IMMUTABLE;
         }
-        PendingIntent stopPendingIntent = PendingIntent.getActivity(context, 0, stopIntent, flags);
+        PendingIntent stopPendingIntent = PendingIntent.getBroadcast(context, 0, stopIntent, flags);
         // the non-deprecated constructor is not available in API 21
         @SuppressWarnings("deprecation")
         Notification.Action.Builder actionBuilder = new Notification.Action.Builder(R.drawable.ic_close_24dp, context.getString(R.string.stop_vpn),
                 stopPendingIntent);
         return actionBuilder.build();
+    }
+
+    public static class StopReceiver extends BroadcastReceiver {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            SessionRequests.send(context, SessionRequests.STOP);
+            context.stopService(new Intent(context, GnirehtetService.class));
+        }
     }
 
     private NotificationManager getNotificationManager() {

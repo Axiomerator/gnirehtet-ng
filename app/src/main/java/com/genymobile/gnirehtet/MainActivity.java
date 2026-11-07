@@ -37,7 +37,7 @@ import androidx.core.view.WindowCompat;
 
 
 /**
- * Material dashboard for Gnirehtet NG. The UI polls the VPN service state every second and
+ * Compose dashboard for Gnirehtet NG. The UI polls the VPN service state every second and
  * can be destroyed at any time without affecting the network service lifecycle.
  */
 public class MainActivity extends AppCompatActivity {
@@ -49,8 +49,10 @@ public class MainActivity extends AppCompatActivity {
     private static final long REFRESH_PERIOD_MS = 1000;
     private static final long RESTART_DELAY_MS = 500;
     private final Handler refreshHandler = new Handler(Looper.getMainLooper());
-    private final Runnable restartRunnable = this::requestStart;
+    private final Runnable restartRunnable = () -> prepareAndStart(false);
     private VpnConfiguration requestedConfig;
+    private boolean vpnConsentPending;
+    private boolean startRequestedByPhone;
     private DashboardUi dashboard;
 
     private final Runnable refreshRunnable = new Runnable() {
@@ -66,7 +68,13 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         configureSystemBars();
         dashboard = new DashboardUi(this);
-        handleIntent(getIntent());
+        if (savedInstanceState == null) {
+            handleIntent(getIntent());
+        } else {
+            requestedConfig = savedInstanceState.getParcelable("vpnConfig");
+            vpnConsentPending = savedInstanceState.getBoolean("vpnConsentPending");
+            startRequestedByPhone = savedInstanceState.getBoolean("startRequestedByPhone");
+        }
     }
 
     @Override
@@ -76,17 +84,22 @@ public class MainActivity extends AppCompatActivity {
         handleIntent(intent);
     }
 
-    /**
-     * Process PC-driven START/STOP actions. When the app is not in the foreground, the system
-     * delivers these intents to this activity (singleTop) instead of launching a new instance.
-     */
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle state) {
+        super.onSaveInstanceState(state);
+        state.putParcelable("vpnConfig", requestedConfig);
+        state.putBoolean("vpnConsentPending", vpnConsentPending);
+        state.putBoolean("startRequestedByPhone", startRequestedByPhone);
+    }
+
     private void handleIntent(Intent intent) {
         String action = intent.getAction();
         if (GnirehtetActivity.ACTION_GNIREHTET_START.equals(action)) {
+            refreshHandler.removeCallbacks(restartRunnable);
             requestedConfig = configFromIntent(intent);
-            requestStart();
+            prepareAndStart(false);
         } else if (GnirehtetActivity.ACTION_GNIREHTET_STOP.equals(action)) {
-            stopVpn();
+            stopLocally();
         }
     }
 
@@ -129,12 +142,19 @@ public class MainActivity extends AppCompatActivity {
     }
 
     void stopVpn() {
+        SessionRequests.send(this, SessionRequests.STOP);
+        stopLocally();
+    }
+
+    private void stopLocally() {
         refreshHandler.removeCallbacks(restartRunnable);
+        vpnConsentPending = false;
         GnirehtetService.stop(this);
     }
 
     void restartVpn() {
-        stopVpn();
+        SessionRequests.send(this, SessionRequests.RESTART);
+        stopLocally();
         refreshHandler.postDelayed(restartRunnable, RESTART_DELAY_MS);
     }
 
@@ -149,22 +169,37 @@ public class MainActivity extends AppCompatActivity {
     }
 
     void requestStart() {
+        prepareAndStart(true);
+    }
+
+    private void prepareAndStart(boolean fromPhone) {
+        if (vpnConsentPending) {
+            if (!fromPhone) {
+                startRequestedByPhone = false;
+            }
+            return;
+        }
         if (GnirehtetService.isRunning()) {
             return;
         }
-        prepareAndStart();
-    }
-
-    private void prepareAndStart() {
         VpnConfiguration config = requestedConfig != null ? requestedConfig : new VpnConfiguration();
         Intent vpnIntent = VpnService.prepare(this);
         if (vpnIntent == null) {
-            GnirehtetService.start(this, config);
-            requestNotificationPermissionIfNeeded();
+            startVpn(config, fromPhone);
             return;
         }
         requestedConfig = config;
+        vpnConsentPending = true;
+        startRequestedByPhone = fromPhone;
         startActivityForResult(vpnIntent, VPN_REQUEST_CODE);
+    }
+
+    private void startVpn(VpnConfiguration config, boolean fromPhone) {
+        if (fromPhone) {
+            SessionRequests.send(this, SessionRequests.START);
+        }
+        GnirehtetService.start(this, config);
+        requestNotificationPermissionIfNeeded();
     }
 
     /**
@@ -189,12 +224,13 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == VPN_REQUEST_CODE && resultCode == RESULT_OK) {
-            VpnConfiguration config = requestedConfig != null ? requestedConfig : new VpnConfiguration();
-            GnirehtetService.start(this, config);
-            requestNotificationPermissionIfNeeded();
+        if (requestCode == VPN_REQUEST_CODE && vpnConsentPending) {
+            vpnConsentPending = false;
+            if (resultCode == RESULT_OK) {
+                VpnConfiguration config = requestedConfig != null ? requestedConfig : new VpnConfiguration();
+                startVpn(config, startRequestedByPhone);
+            }
         }
-        requestedConfig = null;
     }
 
     @Override

@@ -10,6 +10,61 @@ use std::time::{Duration, Instant};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_CAPTURE_BYTES: usize = 256 * 1024;
+const SESSION_REQUESTS_URI: &str = concat!(
+    "content://",
+    env!("GNIREHTET_NG_ANDROID_APPLICATION_ID"),
+    ".session-requests"
+);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PhoneAction {
+    Start,
+    Stop,
+    Restart,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct PhoneRequest {
+    pub action: PhoneAction,
+    pub token: String,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum PhoneRequests {
+    Unsupported,
+    Empty,
+    Pending(PhoneRequest),
+}
+
+fn parse_phone_request(output: &str) -> PhoneRequests {
+    let Some(value) = output.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("Result: Bundle[{request=")?
+            .strip_suffix("}]")
+    }) else {
+        return PhoneRequests::Unsupported;
+    };
+    let Some((action, id)) = value.split_once(':') else {
+        return PhoneRequests::Empty;
+    };
+    if id.len() != 36
+        || !id
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() || byte == b'-')
+    {
+        return PhoneRequests::Empty;
+    }
+    let action = match action {
+        "start" => PhoneAction::Start,
+        "stop" => PhoneAction::Stop,
+        "restart" => PhoneAction::Restart,
+        _ => return PhoneRequests::Empty,
+    };
+    PhoneRequests::Pending(PhoneRequest {
+        action,
+        token: value.to_owned(),
+    })
+}
 
 #[derive(Debug)]
 pub struct CommandOutput {
@@ -202,12 +257,69 @@ impl AdbManager {
         Ok(reverse_list_contains(&output.stdout, serial, port))
     }
 
+    pub fn phone_requests(&self, serial: &str) -> Result<PhoneRequests, Fault> {
+        let output = self.shell_capture(
+            serial,
+            [
+                "content",
+                "call",
+                "--uri",
+                SESSION_REQUESTS_URI,
+                "--method",
+                "peek",
+            ],
+            "phone_session_request",
+        )?;
+        Ok(parse_phone_request(&output))
+    }
+
+    pub fn acknowledge_phone_request(
+        &self,
+        serial: &str,
+        request: &PhoneRequest,
+    ) -> Result<(), Fault> {
+        self.shell_capture(
+            serial,
+            [
+                "content",
+                "call",
+                "--uri",
+                SESSION_REQUESTS_URI,
+                "--method",
+                "ack",
+                "--arg",
+                &request.token,
+            ],
+            "ack_phone_session_request",
+        )?;
+        Ok(())
+    }
+
+    fn cancel_phone_request(&self, serial: &str) {
+        let _ = self.shell_capture(
+            serial,
+            [
+                "content",
+                "call",
+                "--uri",
+                SESSION_REQUESTS_URI,
+                "--method",
+                "cancel",
+            ],
+            "cancel_phone_session_request",
+        );
+    }
+
     pub fn start_client(
         &self,
         serial: &str,
         dns_servers: Option<&str>,
         routes: Option<&str>,
+        replace_phone_request: bool,
     ) -> Result<(), Fault> {
+        if replace_phone_request {
+            self.cancel_phone_request(serial);
+        }
         let mut args = vec![
             "shell".to_string(),
             "am".to_string(),
@@ -262,7 +374,10 @@ impl AdbManager {
         Ok(())
     }
 
-    pub fn stop_client(&self, serial: &str) -> Result<(), Fault> {
+    pub fn stop_client(&self, serial: &str, replace_phone_request: bool) -> Result<(), Fault> {
+        if replace_phone_request {
+            self.cancel_phone_request(serial);
+        }
         self.execute(
             Some(serial),
             [
@@ -712,6 +827,35 @@ pub fn parse_vpn_health(output: &str, package: &str) -> (bool, bool) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn parses_only_valid_phone_requests() {
+        use super::{parse_phone_request, PhoneAction, PhoneRequest, PhoneRequests};
+
+        let id = "39010b42-24d2-474a-8c72-71b411cf6989";
+        for (name, action) in [
+            ("start", PhoneAction::Start),
+            ("stop", PhoneAction::Stop),
+            ("restart", PhoneAction::Restart),
+        ] {
+            let token = format!("{name}:{id}");
+            assert_eq!(
+                parse_phone_request(&format!("Result: Bundle[{{request={token}}}]\r\n")),
+                PhoneRequests::Pending(PhoneRequest { action, token }),
+            );
+        }
+        assert_eq!(
+            parse_phone_request("Result: Bundle[{request=none}]"),
+            PhoneRequests::Empty
+        );
+        assert_eq!(
+            parse_phone_request("Result: Bundle[{request=stop:malformed}]"),
+            PhoneRequests::Empty
+        );
+        assert_eq!(
+            parse_phone_request("Error while accessing provider"),
+            PhoneRequests::Unsupported
+        );
+    }
     use super::*;
 
     #[test]

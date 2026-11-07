@@ -234,6 +234,9 @@ public class GnirehtetService extends VpnService {
     @Override
     public void onRevoke() {
         Log.i(TAG, "VPN authorization revoked");
+        if (isVpnInterfaceRunning()) {
+            SessionRequests.send(this, SessionRequests.STOP);
+        }
         close();
         super.onRevoke();
     }

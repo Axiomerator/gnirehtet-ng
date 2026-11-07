@@ -1,4 +1,6 @@
-use crate::controller::adb::{run_program, AdbManager, ProcessError};
+use crate::controller::adb::{
+    run_program, AdbManager, PhoneAction, PhoneRequest, PhoneRequests, ProcessError,
+};
 use crate::controller::model::{
     AdbState, ApkState, ControllerSnapshot, Fault, HealthState, SessionState, SharedTraffic,
     TrafficTotals,
@@ -83,6 +85,7 @@ impl DeviceSession {
         snapshot: &mut ControllerSnapshot,
         log: SharedLog,
         traffic: SharedTraffic,
+        replace_phone_request: bool,
     ) -> Result<Self, Fault> {
         snapshot.force_transition(SessionState::Preparing);
         snapshot.relay_port = config.port;
@@ -114,7 +117,7 @@ impl DeviceSession {
             traffic,
         };
 
-        let result = session.start_transaction(adb, apk_path, snapshot);
+        let result = session.start_transaction(adb, apk_path, snapshot, replace_phone_request);
         if let Err(fault) = result {
             session.rollback(adb, snapshot);
             return Err(fault);
@@ -127,6 +130,7 @@ impl DeviceSession {
         adb: &AdbManager,
         apk_path: &Path,
         snapshot: &mut ControllerSnapshot,
+        replace_phone_request: bool,
     ) -> Result<(), Fault> {
         match adb.package_version(&self.serial)? {
             Some(version) if version == REQUIRED_APK_VERSION_CODE => {
@@ -167,6 +171,7 @@ impl DeviceSession {
             &self.serial,
             self.config.dns_servers.as_deref(),
             self.config.routes.as_deref(),
+            replace_phone_request,
         )?;
         self.client_started = true;
         self.await_client_health(adb, snapshot)
@@ -370,6 +375,24 @@ impl DeviceSession {
                     ),
                 );
                 return Ok(());
+            }
+            if !vpn
+                && matches!(
+                    adb.phone_requests(&self.serial),
+                    Ok(PhoneRequests::Pending(PhoneRequest {
+                        action: PhoneAction::Stop,
+                        ..
+                    }))
+                )
+            {
+                return Err(Fault::new(
+                    "phone_stopped_session",
+                    "The phone stopped the session during startup",
+                    false,
+                    "ANDROID",
+                    "await_client_health",
+                    Some(self.serial.clone()),
+                ));
             }
             if Instant::now() >= deadline {
                 let (code, message, retryable, state) = if saw_process && !saw_vpn {
@@ -640,13 +663,22 @@ impl DeviceSession {
         Ok(())
     }
 
-    pub fn stop(&mut self, adb: &AdbManager, snapshot: &mut ControllerSnapshot) {
+    pub fn stop(
+        &mut self,
+        adb: &AdbManager,
+        snapshot: &mut ControllerSnapshot,
+        replace_phone_request: bool,
+    ) {
         snapshot.force_transition(SessionState::Stopping);
         if self.client_started {
-            if let Err(fault) = adb.stop_client(&self.serial) {
+            if let Err(fault) = adb.stop_client(&self.serial, replace_phone_request) {
                 log_fault(&self.log, &fault, "client_stop_failed");
             }
         }
+        self.release(adb, snapshot);
+    }
+
+    pub fn release(&mut self, adb: &AdbManager, snapshot: &mut ControllerSnapshot) {
         if self.owned_reverse {
             if let Err(fault) = adb.remove_reverse(&self.serial) {
                 log_fault(&self.log, &fault, "reverse_remove_failed");
@@ -680,7 +712,7 @@ impl DeviceSession {
                 "Rolling back resources created by the failed start transaction",
             ),
         );
-        self.stop(adb, snapshot);
+        self.stop(adb, snapshot, false);
     }
 
     fn clear_session_health(&self, snapshot: &mut ControllerSnapshot) {

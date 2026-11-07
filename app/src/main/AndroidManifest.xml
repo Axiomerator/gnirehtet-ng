@@ -50,6 +50,16 @@
             </intent-filter>
         </activity>
 
+        <receiver
+            android:name=".Notifier$StopReceiver"
+            android:exported="false" />
+
+        <provider
+            android:name=".SessionRequests"
+            android:authorities="${applicationId}.session-requests"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
+
         <service
             android:name=".GnirehtetService"
             android:enabled="true"

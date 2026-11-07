@@ -13,7 +13,7 @@ Enable USB debugging on the phone and authorize the computer. If multiple phones
 
 ## Controls and cleanup
 
-- **Stop** ends the current session. **Restart** tears it down and establishes it again.
+- Use **Start**, **Stop**, or **Restart** on either dashboard. Keep the Windows app running or enable **Close to notification area** so it can receive requests from the phone over USB.
 - Closing the GUI exits by default. If the GUI started the controller, exiting cleans up the managed session and stops the ADB server it uses. This can interrupt other tools using that server. Enable **Close to notification area** in Windows Settings to keep the session active.
 - Delete the extracted folder to remove the desktop files. Local settings and logs are stored under `%LOCALAPPDATA%\GnirehtetNg`. Remove the Android app through Android Settings when you no longer need it.
 

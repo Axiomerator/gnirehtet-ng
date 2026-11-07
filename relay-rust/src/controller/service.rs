@@ -1,4 +1,4 @@
-use crate::controller::adb::AdbManager;
+use crate::controller::adb::{AdbManager, PhoneAction, PhoneRequest, PhoneRequests};
 use crate::controller::diagnostics::export_diagnostics;
 use crate::controller::model::{
     recovery_delay, AdbState, ControllerSnapshot, Fault, SessionState, SharedTraffic,
@@ -7,6 +7,7 @@ use crate::controller::model::{
 use crate::controller::session::{log_fault, DeviceSession, RecoveryAction, SessionConfig};
 use crate::controller::structured_log::{emit, LogEvent, LogLevel, LogStore, SharedLog};
 use chrono::Utc;
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -443,18 +444,20 @@ fn worker_loop(
     let mut pending_recovery: Option<PendingRecovery> = None;
     let mut last_health_fault: Option<String> = None;
     let mut exhausted_fault: Option<String> = None;
-    let mut adoption_cooling_until: Option<Instant> = None;
-    let mut idle_ticks: u32 = 0;
+    let mut legacy_retry_at = Instant::now();
+    let mut handled_requests = HashMap::<String, String>::new();
+    let mut last_config = SessionConfig::default();
 
     loop {
         match command_rx.recv_timeout(WATCHDOG_INTERVAL) {
             Ok(ControlCommand::Start(config, response)) => {
+                last_config = config.clone();
                 pending_recovery = None;
                 exhausted_fault = None;
                 ensure_hyperos_whitelist(&adb, &log, config.serial.as_deref());
                 if let Some(mut active) = session.take() {
                     let mut current = lock_snapshot(&snapshot);
-                    active.stop(&adb, &mut current);
+                    active.stop(&adb, &mut current, true);
                     persist_snapshot(&state_directory, &current);
                 }
                 let mut current = lock_snapshot(&snapshot);
@@ -466,6 +469,7 @@ fn worker_loop(
                     &mut current,
                     log.clone(),
                     traffic.clone(),
+                    true,
                 );
                 match result {
                     Ok(active) => {
@@ -488,13 +492,18 @@ fn worker_loop(
                 exhausted_fault = None;
                 if let Some(mut active) = session.take() {
                     let mut current = lock_snapshot(&snapshot);
-                    active.stop(&adb, &mut current);
+                    active.stop(&adb, &mut current, true);
                     current.last_fault = None;
                     sync_traffic(&mut current, &traffic);
                     persist_snapshot(&state_directory, &current);
                     let _ = response.send(Ok(current.clone()));
                 } else {
                     let mut current = lock_snapshot(&snapshot);
+                    if let Some(device) = &current.selected_device {
+                        if let Err(fault) = adb.stop_client(&device.serial, true) {
+                            log_fault(&log, &fault, "client_stop_failed");
+                        }
+                    }
                     reset_inactive_snapshot(&mut current);
                     traffic
                         .lock()
@@ -506,12 +515,13 @@ fn worker_loop(
                 }
             }
             Ok(ControlCommand::Restart(config, response)) => {
+                last_config = config.clone();
                 pending_recovery = None;
                 exhausted_fault = None;
                 ensure_hyperos_whitelist(&adb, &log, config.serial.as_deref());
                 if let Some(mut active) = session.take() {
                     let mut current = lock_snapshot(&snapshot);
-                    active.stop(&adb, &mut current);
+                    active.stop(&adb, &mut current, true);
                 }
                 let mut current = lock_snapshot(&snapshot);
                 match DeviceSession::start(
@@ -522,6 +532,7 @@ fn worker_loop(
                     &mut current,
                     log.clone(),
                     traffic.clone(),
+                    true,
                 ) {
                     Ok(active) => {
                         session = Some(active);
@@ -541,7 +552,7 @@ fn worker_loop(
             Ok(ControlCommand::Shutdown(response)) => {
                 let mut current = lock_snapshot(&snapshot);
                 if let Some(mut active) = session.take() {
-                    active.stop(&adb, &mut current);
+                    active.stop(&adb, &mut current, true);
                 } else {
                     reset_inactive_snapshot(&mut current);
                 }
@@ -578,7 +589,7 @@ fn worker_loop(
                 );
                 if let Some(mut active) = session.take() {
                     let mut current = lock_snapshot(&snapshot);
-                    active.stop(&adb, &mut current);
+                    active.stop(&adb, &mut current, true);
                     persist_snapshot(&state_directory, &current);
                 }
                 for device in adb.list_devices().unwrap_or_default() {
@@ -607,6 +618,81 @@ fn worker_loop(
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
             Err(mpsc::RecvTimeoutError::Timeout) => {
+                let active_serial = session.as_ref().map(|active| active.serial.as_str());
+                let legacy_allowed = parent_pid.is_some() && Instant::now() >= legacy_retry_at;
+                if let Some((serial, request)) =
+                    find_phone_request(&adb, active_serial, legacy_allowed)
+                {
+                    if request.as_ref().is_some_and(|request| {
+                        handled_requests.get(&serial) == Some(&request.token)
+                    }) {
+                        let _ = adb.acknowledge_phone_request(&serial, request.as_ref().unwrap());
+                    } else {
+                        let action = request
+                            .as_ref()
+                            .map_or(PhoneAction::Start, |request| request.action);
+                        pending_recovery = None;
+                        last_health_fault = None;
+                        exhausted_fault = None;
+                        emit(
+                            &log,
+                            LogEvent::new(
+                                LogLevel::Info,
+                                "CORE",
+                                Some(serial.clone()),
+                                "phone_session_request",
+                                format!("Android requested {action:?}"),
+                            ),
+                        );
+                        let mut current = lock_snapshot(&snapshot);
+                        match action {
+                            PhoneAction::Stop => {
+                                if let Some(mut active) = session.take() {
+                                    active.stop(&adb, &mut current, false);
+                                }
+                                reset_inactive_snapshot(&mut current);
+                            }
+                            PhoneAction::Start | PhoneAction::Restart => {
+                                if let Some(mut active) = session.take() {
+                                    // Android already applied its side of the action. Retire the
+                                    // old relay without stopping a newly established phone VPN.
+                                    active.release(&adb, &mut current);
+                                }
+                                let mut config = last_config.clone();
+                                config.serial = Some(serial.clone());
+                                ensure_hyperos_whitelist(&adb, &log, Some(&serial));
+                                match DeviceSession::start(
+                                    config,
+                                    &adb,
+                                    &apk_path,
+                                    &relay_executable,
+                                    &mut current,
+                                    log.clone(),
+                                    traffic.clone(),
+                                    false,
+                                ) {
+                                    Ok(active) => {
+                                        session = Some(active);
+                                        current.last_fault = None;
+                                    }
+                                    Err(fault) => {
+                                        log_fault(&log, &fault, "phone_session_start_failed");
+                                        current.record_fault(fault, SessionState::Faulted);
+                                        legacy_retry_at = Instant::now() + Duration::from_secs(10);
+                                    }
+                                }
+                            }
+                        }
+                        sync_traffic(&mut current, &traffic);
+                        persist_snapshot(&state_directory, &current);
+                        drop(current);
+                        if let Some(request) = request {
+                            handled_requests.insert(serial.clone(), request.token.clone());
+                            let _ = adb.acknowledge_phone_request(&serial, &request);
+                        }
+                        continue;
+                    }
+                }
                 if let Some(active) = session.as_mut() {
                     watchdog_tick(
                         active,
@@ -619,90 +705,41 @@ fn worker_loop(
                         &mut exhausted_fault,
                         &traffic,
                     );
-                } else if parent_pid.is_some() {
-                    // Poll phone-initiated sessions sparingly: every poll spawns ADB
-                    // processes, which would otherwise keep the ADB daemon alive (and
-                    // resurrect it right after a manual kill) every two seconds.
-                    idle_ticks = idle_ticks.wrapping_add(1);
-                    if idle_ticks >= 5 {
-                        idle_ticks = 0;
-                        session = adopt_phone_started_session(
-                            &adb,
-                            &apk_path,
-                            &relay_executable,
-                            &snapshot,
-                            &log,
-                            &state_directory,
-                            &traffic,
-                            &mut adoption_cooling_until,
-                        );
-                    }
                 }
             }
         }
     }
 }
 
-/// While the GUI-owned controller is idle, a session started from the phone app itself
-/// (VPN active but no controller session) is adopted through the normal start transaction,
-/// so the relay and reverse come up and both sides report the same state.
-fn adopt_phone_started_session(
+fn find_phone_request(
     adb: &AdbManager,
-    apk_path: &Path,
-    relay_executable: &Path,
-    snapshot: &Arc<Mutex<ControllerSnapshot>>,
-    log: &SharedLog,
-    state_directory: &Path,
-    traffic: &SharedTraffic,
-    cooling_until: &mut Option<Instant>,
-) -> Option<DeviceSession> {
-    if let Some(until) = cooling_until.as_ref() {
-        if Instant::now() < *until {
-            return None;
+    active_serial: Option<&str>,
+    legacy_allowed: bool,
+) -> Option<(String, Option<PhoneRequest>)> {
+    if let Some(serial) = active_serial {
+        return match adb.phone_requests(serial) {
+            Ok(PhoneRequests::Pending(request)) => Some((serial.to_owned(), Some(request))),
+            _ => None,
+        };
+    }
+    for device in adb.list_devices().ok()? {
+        if device.adb_state != AdbState::Ready {
+            continue;
+        }
+        let serial = device.serial;
+        match adb.phone_requests(&serial) {
+            Ok(PhoneRequests::Pending(request)) => return Some((serial, Some(request))),
+            Ok(PhoneRequests::Unsupported) if legacy_allowed => {
+                // An older APK can still be adopted on its first start and upgraded
+                // by the normal session transaction.
+                if matches!(adb.service_is_active(&serial), Ok(true)) {
+                    return Some((serial, None));
+                }
+            }
+            _ => {}
         }
     }
-    let devices = adb.list_devices().ok()?;
-    let ready = devices
-        .into_iter()
-        .find(|device| device.adb_state == AdbState::Ready)?;
-    match adb.service_is_active(&ready.serial) {
-        Ok(true) => {}
-        Ok(false) => return None,
-        Err(_) => return None,
-    }
-    let mut config = SessionConfig::default();
-    config.serial = Some(ready.serial.clone());
-    let mut current = lock_snapshot(snapshot);
-    match DeviceSession::start(
-        config,
-        adb,
-        apk_path,
-        relay_executable,
-        &mut current,
-        log.clone(),
-        traffic.clone(),
-    ) {
-        Ok(session) => {
-            emit(
-                log,
-                LogEvent::new(
-                    LogLevel::Info,
-                    "CORE",
-                    Some(ready.serial),
-                    "session_adopted",
-                    "Phone-initiated VPN detected; adopting the session",
-                ),
-            );
-            persist_snapshot(state_directory, &current);
-            Some(session)
-        }
-        Err(fault) => {
-            log_fault(log, &fault, "session_adoption_failed");
-            *cooling_until = Some(Instant::now() + Duration::from_secs(10));
-            persist_snapshot(state_directory, &current);
-            None
-        }
-    }
+    None
 }
 
 fn watchdog_tick(

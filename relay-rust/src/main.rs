@@ -691,7 +691,11 @@ mod tests {
             "org.gnirehtetng.client/com.genymobile.gnirehtet.MainActivity",
             CLIENT_ACTIVITY
         );
-        assert_eq!("30", REQUIRED_APK_VERSION_CODE);
+        let configured_version = include_str!("../../config/product.properties")
+            .lines()
+            .find_map(|line| line.strip_prefix("androidVersionCode="))
+            .expect("product configuration defines the Android version code");
+        assert_eq!(configured_version, REQUIRED_APK_VERSION_CODE);
     }
 
     #[test]

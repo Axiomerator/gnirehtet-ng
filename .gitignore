@@ -1,5 +1,48 @@
-build/
+# Project-local tools, dependency caches, and build output
+/.tools/
+/.cache/
+/.cargo-target/
+/.gradle-home/
 .gradle/
+build/
+/out/
+/dist/
+target/
+/windows/**/obj/
+/windows/**/bin/
+**/Generated Files/
+*.apk
+*.aab
+*.exe
+*.dll
+*.pdb
+*.msix
+*.msixbundle
+*.zip
+
+# Machine settings, signing material, and device diagnostics
+/.git-meta/
+/.local/
+/instructions.txt
+/local.properties
+/signing.properties
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.pem
+*.key
+.env
+.env.*
+adbkey*
+*.log
+
+# IDE and OS files
+.vs/
 .idea/
 *.iml
-/local.properties
+*.user
+*.suo
+*.VC.db
+Thumbs.db
+.DS_Store

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gnirehtet-ng.local/protocol/ipc-v1.schema.json",
+  "title": "Gnirehtet NG local IPC v1",
+  "oneOf": [
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/response" }
+  ],
+  "$defs": {
+    "request": {
+      "type": "object",
+      "required": ["version", "id", "type", "payload"],
+      "properties": {
+        "version": { "const": 1 },
+        "id": { "type": "string", "maxLength": 256 },
+        "type": {
+          "enum": [
+            "get_status",
+            "status",
+            "get_metrics",
+            "start",
+            "stop",
+            "restart",
+            "get_devices",
+            "devices",
+            "get_logs",
+            "logs",
+            "export_diagnostics",
+            "diagnose",
+            "shutdown_core"
+          ]
+        },
+        "payload": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "response": {
+      "type": "object",
+      "required": ["version", "id", "type", "ok", "payload"],
+      "properties": {
+        "version": { "const": 1 },
+        "id": { "type": "string" },
+        "type": { "enum": ["result", "error"] },
+        "ok": { "type": "boolean" },
+        "payload": {}
+      },
+      "additionalProperties": false
+    }
+  }
+}

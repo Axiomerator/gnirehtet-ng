@@ -16,10 +16,13 @@
 
 mod relay;
 pub use crate::relay::byte_buffer;
+pub mod controller;
+pub mod subprocess;
 
 use crate::relay::Relay;
 use std::io;
 
 pub fn relay(port: u16) -> io::Result<()> {
+    crate::relay::traffic_metrics::start_reporter_if_requested();
     Relay::new(port).run()
 }

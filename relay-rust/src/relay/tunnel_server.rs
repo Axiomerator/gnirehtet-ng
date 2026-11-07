@@ -28,11 +28,48 @@ use super::selector::Selector;
 
 const TAG: &str = "TunnelServer";
 
+fn local_hostname() -> String {
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(name) = std::env::var("COMPUTERNAME") {
+            if !name.trim().is_empty() {
+                return name;
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Ok(name) = std::env::var("HOSTNAME") {
+            if !name.trim().is_empty() {
+                return name;
+            }
+        }
+    }
+    "gnirehtet-relay".to_string()
+}
+
 pub struct TunnelServer {
     self_weak: Weak<RefCell<TunnelServer>>,
     clients: Vec<Rc<RefCell<Client>>>,
     tcp_listener: TcpListener,
     next_client_id: u32,
+    greeting: Vec<u8>,
+}
+
+/// Fixed-size greeting sent to every client before any packet: 4-byte client id (big endian),
+/// 2-byte relay port (big endian), then a NUL-padded UTF-8 host name.
+pub const GREETING_HOSTNAME_LENGTH: usize = 256;
+
+pub fn build_greeting(port: u16, hostname: &str) -> Vec<u8> {
+    let mut greeting = Vec::with_capacity(4 + 2 + GREETING_HOSTNAME_LENGTH);
+    greeting.extend_from_slice(&0u32.to_be_bytes());
+    greeting.extend_from_slice(&port.to_be_bytes());
+    let mut name = [0u8; GREETING_HOSTNAME_LENGTH];
+    let hostname_bytes = hostname.as_bytes();
+    let length = hostname_bytes.len().min(GREETING_HOSTNAME_LENGTH - 1);
+    name[..length].copy_from_slice(&hostname_bytes[..length]);
+    greeting.extend_from_slice(&name);
+    greeting
 }
 
 impl TunnelServer {
@@ -43,6 +80,7 @@ impl TunnelServer {
             clients: Vec::new(),
             tcp_listener,
             next_client_id: 0,
+            greeting: build_greeting(port, &local_hostname()),
         }));
 
         // keep a shared reference to this
@@ -82,6 +120,9 @@ impl TunnelServer {
         let (stream, _) = self.tcp_listener.accept()?;
         let client_id = self.next_client_id;
         self.next_client_id += 1;
+        // write the actual client id into this client's greeting copy
+        let mut greeting = self.greeting.clone();
+        greeting[..4].copy_from_slice(&client_id.to_be_bytes());
         let weak = self.self_weak.clone();
         let on_client_closed = Box::new(move |client: &Client| {
             if let Some(rc) = weak.upgrade() {
@@ -94,7 +135,7 @@ impl TunnelServer {
                 );
             }
         });
-        let client = Client::create(client_id, selector, stream, on_client_closed)?;
+        let client = Client::create(client_id, selector, stream, &greeting, on_client_closed)?;
         self.clients.push(client);
         info!(target: TAG, "Client #{} connected", client_id);
         Ok(())

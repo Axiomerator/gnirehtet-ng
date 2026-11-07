@@ -1,2 +1,2 @@
-@gnirehtet.exe run
+@gnirehtet-ng.exe run
 @pause

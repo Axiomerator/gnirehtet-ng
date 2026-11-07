@@ -1,6 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="notification_channel_description">État du VPN de partage de connexion USB inversé</string>
     <string name="relay_connected">Reverse tethering activé</string>
     <string name="relay_disconnected">Déconnecté du serveur relais</string>
-    <string name="stop_vpn">Arrêter Gnirehtet</string>
+    <string name="stop_vpn">Arrêter Gnirehtet NG</string>
+    <string name="dashboard_title">Gnirehtet NG</string>
+    <string name="dashboard_subtitle">Partage de connexion USB inversé via ADB</string>
+    <string name="status_not_running">Déconnecté</string>
+    <string name="status_connecting">En attente de la connexion au relais…</string>
+    <string name="status_connected">Connecté via le relais du PC</string>
+    <string name="status_disconnected">Relais déconnecté, reconnexion en cours…</string>
+    <string name="traffic_down">Reçu</string>
+    <string name="traffic_up">Envoyé</string>
+    <string name="action_start">Démarrer</string>
+    <string name="action_stop">Arrêter</string>
+    <string name="action_restart">Redémarrer</string>
+    <string name="auto_reconnect">Maintenir le VPN en cas de perte du relais</string>
+    <string name="auto_reconnect_hint">Si cette option est désactivée, le VPN s’arrête cinq secondes après la perte du relais.</string>
+    <string name="uptime_format">Connecté depuis %1$s</string>
+    <string name="traffic_value_format">%1$s · %2$s</string>
+    <string name="pc_connected_format">Connecté via %1$s · port du relais %2$d</string>
+    <string name="vpn_configuration_title">Configuration du VPN</string>
+    <string name="dns_label">Serveurs DNS</string>
+    <string name="routes_label">Routes IPv4</string>
+    <string name="value_not_set">Non défini</string>
+    <string name="action_diagnostics">Exporter les diagnostics</string>
+    <string name="diagnostics_subject">Diagnostics de Gnirehtet NG</string>
+    <string name="background_reliability_title">Fonctionnement en arrière-plan</string>
+    <string name="battery_opt_exempt">Optimisation de la batterie Android désactivée</string>
+    <string name="battery_opt_not_exempt">Optimisation de la batterie Android active</string>
+    <string name="action_authorize_battery_opt">Désactiver l’optimisation de la batterie</string>
 </resources>

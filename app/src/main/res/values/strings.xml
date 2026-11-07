@@ -1,6 +1,33 @@
 <resources>
-    <string name="app_name" translatable="false">Gnirehtet</string>
+    <string name="app_name" translatable="false">Gnirehtet NG</string>
+    <string name="notification_channel_description">USB reverse tethering VPN status</string>
     <string name="relay_connected">Reverse tethering enabled</string>
     <string name="relay_disconnected">Disconnected from the relay server</string>
-    <string name="stop_vpn">Stop Gnirehtet</string>
+    <string name="stop_vpn">Stop Gnirehtet NG</string>
+    <string name="dashboard_title">Gnirehtet NG</string>
+    <string name="dashboard_subtitle">USB reverse tethering over ADB</string>
+    <string name="status_not_running">Not connected</string>
+    <string name="status_connecting">Waiting for the relay tunnel…</string>
+    <string name="status_connected">Connected through the PC relay</string>
+    <string name="status_disconnected">Relay lost, reconnecting…</string>
+    <string name="traffic_down">Received</string>
+    <string name="traffic_up">Sent</string>
+    <string name="action_start">Start</string>
+    <string name="action_stop">Stop</string>
+    <string name="action_restart">Restart</string>
+    <string name="auto_reconnect">Keep the VPN alive when the relay drops</string>
+    <string name="auto_reconnect_hint">When off, the VPN shuts down five seconds after losing the relay.</string>
+    <string name="uptime_format">Up for %1$s</string>
+    <string name="traffic_value_format">%1$s · %2$s</string>
+    <string name="pc_connected_format">Connected via %1$s · relay port %2$d</string>
+    <string name="vpn_configuration_title">VPN configuration</string>
+    <string name="dns_label">DNS servers</string>
+    <string name="routes_label">IPv4 routes</string>
+    <string name="value_not_set">Not set</string>
+    <string name="action_diagnostics">Export diagnostics</string>
+    <string name="diagnostics_subject">Gnirehtet NG diagnostics</string>
+    <string name="background_reliability_title">Background reliability</string>
+    <string name="battery_opt_exempt">Android battery optimization: ignored</string>
+    <string name="battery_opt_not_exempt">Android battery optimization: not ignored</string>
+    <string name="action_authorize_battery_opt">Ignore battery optimization</string>
 </resources>

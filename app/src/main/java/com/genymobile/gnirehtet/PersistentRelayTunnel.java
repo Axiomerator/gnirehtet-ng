@@ -45,7 +45,13 @@ public class PersistentRelayTunnel implements Tunnel {
                 tunnel = provider.getCurrentTunnel();
                 tunnel.send(packet, len);
                 return;
-            } catch (IOException | InterruptedException e) {
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw interrupted(e);
+            } catch (IOException e) {
+                if (stopped.get()) {
+                    throw interrupted(e);
+                }
                 Log.e(TAG, "Cannot send to tunnel", e);
                 if (tunnel != null) {
                     provider.invalidateTunnel(tunnel);
@@ -68,7 +74,13 @@ public class PersistentRelayTunnel implements Tunnel {
                     continue;
                 }
                 return r;
-            } catch (IOException | InterruptedException e) {
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw interrupted(e);
+            } catch (IOException e) {
+                if (stopped.get()) {
+                    throw interrupted(e);
+                }
                 Log.e(TAG, "Cannot receive from tunnel", e);
                 if (tunnel != null) {
                     provider.invalidateTunnel(tunnel);
@@ -76,6 +88,12 @@ public class PersistentRelayTunnel implements Tunnel {
             }
         }
         throw new InterruptedIOException("Persistent tunnel stopped");
+    }
+
+    private static InterruptedIOException interrupted(Exception cause) {
+        InterruptedIOException exception = new InterruptedIOException("Persistent tunnel stopped");
+        exception.initCause(cause);
+        return exception;
     }
 
     @Override

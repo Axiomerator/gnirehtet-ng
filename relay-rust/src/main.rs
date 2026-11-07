@@ -28,13 +28,22 @@ mod logger;
 use crate::adb_monitor::AdbMonitor;
 use crate::cli_args::CommandLineArguments;
 use crate::execution_error::{Cmd, CommandExecutionError, ProcessIoError, ProcessStatusError};
+use relaylib::subprocess::configure_background;
 use std::env;
 use std::process::{self, exit};
 use std::thread;
 use std::time::Duration;
 
 const TAG: &str = "Main";
-const REQUIRED_APK_VERSION_CODE: &str = "9";
+const CLIENT_PACKAGE: &str = env!("GNIREHTET_NG_ANDROID_APPLICATION_ID");
+const CLIENT_ACTIVITY: &str = concat!(
+    env!("GNIREHTET_NG_ANDROID_APPLICATION_ID"),
+    "/",
+    env!("GNIREHTET_NG_ANDROID_ACTIVITY_CLASS")
+);
+const CLIENT_ACTION_START: &str = concat!(env!("GNIREHTET_NG_ANDROID_APPLICATION_ID"), ".START");
+const CLIENT_ACTION_STOP: &str = concat!(env!("GNIREHTET_NG_ANDROID_APPLICATION_ID"), ".STOP");
+const REQUIRED_APK_VERSION_CODE: &str = env!("GNIREHTET_NG_ANDROID_VERSION_CODE");
 
 #[inline]
 fn get_adb_path() -> String {
@@ -50,7 +59,7 @@ fn get_apk_path() -> String {
     if let Some(env_adb) = std::env::var_os("GNIREHTET_APK") {
         env_adb.into_string().expect("invalid GNIREHTET_APK value")
     } else {
-        "gnirehtet.apk".to_string()
+        "gnirehtet-ng.apk".to_string()
     }
 }
 
@@ -342,13 +351,13 @@ impl Command for RelayCommand {
 }
 
 fn cmd_install(serial: Option<&str>) -> Result<(), CommandExecutionError> {
-    info!(target: TAG, "Installing gnirehtet client...");
+    info!(target: TAG, "Installing Gnirehtet NG client...");
     exec_adb(serial, vec!["install".into(), "-r".into(), get_apk_path()])
 }
 
 fn cmd_uninstall(serial: Option<&str>) -> Result<(), CommandExecutionError> {
-    info!(target: TAG, "Uninstalling gnirehtet client...");
-    exec_adb(serial, vec!["uninstall", "com.genymobile.gnirehtet"])
+    info!(target: TAG, "Uninstalling Gnirehtet NG client...");
+    exec_adb(serial, vec!["uninstall", CLIENT_PACKAGE])
 }
 
 fn cmd_reinstall(serial: Option<&str>) -> Result<(), CommandExecutionError> {
@@ -415,25 +424,10 @@ fn cmd_start(
         thread::sleep(Duration::from_millis(500));
     }
 
-    info!(target: TAG, "Starting client...");
+    info!(target: TAG, "Starting Gnirehtet NG client...");
     cmd_tunnel(serial, port)?;
 
-    let mut adb_args = vec![
-        "shell",
-        "am",
-        "start",
-        "-a",
-        "com.genymobile.gnirehtet.START",
-        "-n",
-        "com.genymobile.gnirehtet/.GnirehtetActivity",
-    ];
-    if let Some(dns_servers) = dns_servers {
-        adb_args.append(&mut vec!["--esa", "dnsServers", dns_servers]);
-    }
-    if let Some(routes) = routes {
-        adb_args.append(&mut vec!["--esa", "routes", routes]);
-    }
-    exec_adb(serial, adb_args)
+    exec_adb(serial, create_start_adb_args(dns_servers, routes))
 }
 
 fn cmd_autostart(
@@ -453,7 +447,7 @@ fn cmd_autostart(
 }
 
 fn cmd_stop(serial: Option<&str>) -> Result<(), CommandExecutionError> {
-    info!(target: TAG, "Stopping client...");
+    info!(target: TAG, "Stopping Gnirehtet NG client...");
     exec_adb(
         serial,
         vec![
@@ -461,9 +455,9 @@ fn cmd_stop(serial: Option<&str>) -> Result<(), CommandExecutionError> {
             "am",
             "start",
             "-a",
-            "com.genymobile.gnirehtet.STOP",
+            CLIENT_ACTION_STOP,
             "-n",
-            "com.genymobile.gnirehtet/.GnirehtetActivity",
+            CLIENT_ACTIVITY,
         ],
     )
 }
@@ -511,6 +505,25 @@ fn create_adb_args<S: Into<String>>(serial: Option<&str>, args: Vec<S>) -> Vec<S
     command
 }
 
+fn create_start_adb_args(dns_servers: Option<&str>, routes: Option<&str>) -> Vec<String> {
+    let mut adb_args = vec![
+        "shell".to_string(),
+        "am".to_string(),
+        "start".to_string(),
+        "-a".to_string(),
+        CLIENT_ACTION_START.to_string(),
+        "-n".to_string(),
+        CLIENT_ACTIVITY.to_string(),
+    ];
+    if let Some(dns_servers) = dns_servers {
+        adb_args.extend(["--esa".into(), "dnsServers".into(), dns_servers.into()]);
+    }
+    if let Some(routes) = routes {
+        adb_args.extend(["--esa".into(), "routes".into(), routes.into()]);
+    }
+    adb_args
+}
+
 fn exec_adb<S: Into<String>>(
     serial: Option<&str>,
     args: Vec<S>,
@@ -518,7 +531,10 @@ fn exec_adb<S: Into<String>>(
     let adb_args = create_adb_args(serial, args);
     let adb = get_adb_path();
     debug!(target: TAG, "Execute: {:?} {:?}", adb, adb_args);
-    match process::Command::new(&adb).args(&adb_args[..]).status() {
+    let mut command = process::Command::new(&adb);
+    command.args(&adb_args[..]);
+    configure_background(&mut command);
+    match command.status() {
         Ok(exit_status) => {
             if exit_status.success() {
                 Ok(())
@@ -535,33 +551,21 @@ fn exec_adb<S: Into<String>>(
 }
 
 fn must_install_client(serial: Option<&str>) -> Result<bool, CommandExecutionError> {
-    info!(target: TAG, "Checking gnirehtet client...");
-    let args = create_adb_args(
-        serial,
-        vec!["shell", "dumpsys", "package", "com.genymobile.gnirehtet"],
-    );
+    info!(target: TAG, "Checking Gnirehtet NG client...");
+    let args = create_adb_args(serial, vec!["shell", "dumpsys", "package", CLIENT_PACKAGE]);
     let adb = get_adb_path();
     debug!(target: TAG, "Execute: {:?} {:?}", adb, args);
-    match process::Command::new(&adb).args(&args[..]).output() {
+    let mut command = process::Command::new(&adb);
+    command.args(&args[..]);
+    configure_background(&mut command);
+    match command.output() {
         Ok(output) => {
             if output.status.success() {
                 // the "regex" crate makes the binary far bigger, so just parse the versionCode
                 // manually
                 let dumpsys = String::from_utf8_lossy(&output.stdout[..]);
                 // read the versionCode of the installed package
-                if let Some(index) = dumpsys.find("    versionCode=") {
-                    let start = index + 16; // size of "    versionCode=\""
-                    if let Some(end) = (&dumpsys[start..]).find(' ') {
-                        let installed_version_code = &dumpsys[start..start + end];
-                        Ok(installed_version_code != REQUIRED_APK_VERSION_CODE)
-                    } else {
-                        // end of versionCode value not found
-                        Ok(true)
-                    }
-                } else {
-                    // versionCode not found
-                    Ok(true)
-                }
+                Ok(parse_installed_version_code(&dumpsys) != Some(REQUIRED_APK_VERSION_CODE))
             } else {
                 let cmd = Cmd::new(adb, args);
                 Err(ProcessStatusError::new(cmd, output.status).into())
@@ -574,8 +578,16 @@ fn must_install_client(serial: Option<&str>) -> Result<bool, CommandExecutionErr
     }
 }
 
+fn parse_installed_version_code(dumpsys: &str) -> Option<&str> {
+    dumpsys.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("versionCode=")
+            .and_then(|value| value.split_whitespace().next())
+    })
+}
+
 fn print_usage() {
-    let mut msg = "Syntax: gnirehtet (".to_string();
+    let mut msg = "Syntax: gnirehtet-ng (".to_string();
     msg.push_str(COMMANDS[0].command());
     for command in &COMMANDS[1..] {
         msg.push('|');
@@ -590,7 +602,7 @@ fn print_usage() {
 }
 
 fn append_command_usage(msg: &mut String, command: &dyn Command) {
-    msg.push_str("  gnirehtet ");
+    msg.push_str("  gnirehtet-ng ");
     msg.push_str(command.command());
     let accepted_parameters = command.accepted_parameters();
     if (accepted_parameters & cli_args::PARAM_SERIAL) != 0 {
@@ -650,7 +662,7 @@ fn main() {
                 if command_name == "rt" {
                     error!(
                         target: TAG,
-                        "The 'rt' command has been renamed to 'run'. Try 'gnirehtet run' instead."
+                        "The 'rt' command has been renamed to 'run'. Try 'gnirehtet-ng run' instead."
                     );
                     print_command_usage(&RunCommand);
                 } else {
@@ -662,5 +674,60 @@ fn main() {
         }
     } else {
         print_usage();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn product_identity_is_loaded_from_shared_configuration() {
+        assert_eq!("org.gnirehtetng.client", CLIENT_PACKAGE);
+        assert_eq!("org.gnirehtetng.client.START", CLIENT_ACTION_START);
+        assert_eq!("org.gnirehtetng.client.STOP", CLIENT_ACTION_STOP);
+        assert_eq!(
+            "org.gnirehtetng.client/com.genymobile.gnirehtet.MainActivity",
+            CLIENT_ACTIVITY
+        );
+        assert_eq!("30", REQUIRED_APK_VERSION_CODE);
+    }
+
+    #[test]
+    fn start_arguments_use_ng_identity_and_optional_network_configuration() {
+        let args = create_start_adb_args(Some("1.1.1.1,8.8.8.8"), Some("0.0.0.0/0"));
+        assert_eq!(
+            vec![
+                "shell",
+                "am",
+                "start",
+                "-a",
+                "org.gnirehtetng.client.START",
+                "-n",
+                "org.gnirehtetng.client/com.genymobile.gnirehtet.MainActivity",
+                "--esa",
+                "dnsServers",
+                "1.1.1.1,8.8.8.8",
+                "--esa",
+                "routes",
+                "0.0.0.0/0",
+            ],
+            args
+        );
+    }
+
+    #[test]
+    fn installed_version_parser_handles_android_dumpsys_output() {
+        let dumpsys = "Packages:\n  Package [org.gnirehtetng.client]\n    versionCode=10 minSdk=21 targetSdk=36\n";
+        assert_eq!(Some("10"), parse_installed_version_code(dumpsys));
+        assert_eq!(None, parse_installed_version_code("Unable to find package"));
+    }
+
+    #[test]
+    fn serial_is_inserted_before_adb_command_arguments() {
+        assert_eq!(
+            vec!["-s", "device-1", "reverse", "--list"],
+            create_adb_args(Some("device-1"), vec!["reverse", "--list"])
+        );
     }
 }

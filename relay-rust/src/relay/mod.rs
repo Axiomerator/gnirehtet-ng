@@ -39,6 +39,7 @@ mod selector;
 mod stream_buffer;
 mod tcp_connection;
 mod tcp_header;
+pub(crate) mod traffic_metrics;
 mod transport_header;
 mod tunnel_server;
 mod udp_connection;

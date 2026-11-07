@@ -23,7 +23,6 @@ use std::mem;
 use std::net::Shutdown;
 use std::rc::Rc;
 
-use super::binary;
 use super::close_listener::CloseListener;
 use super::ipv4_packet::{Ipv4Packet, MAX_PACKET_LENGTH};
 use super::ipv4_packet_buffer::Ipv4PacketBuffer;
@@ -31,6 +30,7 @@ use super::packet_source::PacketSource;
 use super::router::Router;
 use super::selector::Selector;
 use super::stream_buffer::StreamBuffer;
+use super::traffic_metrics;
 
 const TAG: &str = "Client";
 
@@ -45,8 +45,8 @@ pub struct Client {
     close_listener: Box<dyn CloseListener<Client>>,
     closed: bool,
     pending_packet_sources: Vec<Rc<RefCell<dyn PacketSource>>>,
-    // number of remaining bytes of "id" to send to the client before relaying any data
-    pending_id_bytes: usize,
+    // remaining greeting bytes (client id + relay port + host name) to send before relaying data
+    pending_greeting: Vec<u8>,
 }
 
 /// Channel for connections to send back data immediately to the client
@@ -81,6 +81,7 @@ impl<'a> ClientChannel<'a> {
     ) -> io::Result<()> {
         if ipv4_packet.length() as usize <= self.network_to_client.remaining() {
             self.network_to_client.read_from(ipv4_packet.raw());
+            traffic_metrics::record_to_device(u64::from(ipv4_packet.length()));
             self.update_interests(selector);
             Ok(())
         } else {
@@ -113,9 +114,10 @@ impl Client {
         id: u32,
         selector: &mut Selector,
         stream: TcpStream,
+        greeting: &[u8],
         close_listener: Box<dyn CloseListener<Client>>,
     ) -> io::Result<Rc<RefCell<Self>>> {
-        // on start, we are interested only in writing (we must first send the client id)
+        // on start, we are interested only in writing (we must first send the greeting)
         let interests = Ready::writable();
         let rc = Rc::new(RefCell::new(Self {
             id,
@@ -128,7 +130,7 @@ impl Client {
             closed: false,
             close_listener,
             pending_packet_sources: Vec::new(),
-            pending_id_bytes: 4,
+            pending_greeting: greeting.to_vec(),
         }));
 
         {
@@ -205,11 +207,11 @@ impl Client {
 
     // return Err(err) with err.kind() == io::ErrorKind::WouldBlock on spurious event
     fn process_send(&mut self, selector: &mut Selector) -> io::Result<()> {
-        if self.must_send_id() {
-            match self.send_id() {
+        if self.must_send_greeting() {
+            match self.send_greeting() {
                 Ok(_) => {
-                    if self.pending_id_bytes == 0 {
-                        debug!(target: TAG, "Client id #{} sent to client", self.id);
+                    if self.pending_greeting.is_empty() {
+                        debug!(target: TAG, "Greeting sent to client #{}", self.id);
                     }
                 }
                 Err(err) => {
@@ -217,7 +219,7 @@ impl Client {
                         // rethrow
                         return Err(err);
                     }
-                    error!(target: TAG, "Cannot write client id #{}", self.id);
+                    error!(target: TAG, "Cannot write greeting to client #{}", self.id);
                     self.close(selector);
                 }
             }
@@ -260,6 +262,7 @@ impl Client {
     ) -> io::Result<()> {
         if ipv4_packet.length() as usize <= self.network_to_client.remaining() {
             self.network_to_client.read_from(ipv4_packet.raw());
+            traffic_metrics::record_to_device(u64::from(ipv4_packet.length()));
             self.update_interests(selector);
             Ok(())
         } else {
@@ -275,11 +278,10 @@ impl Client {
         self.pending_packet_sources.push(source);
     }
 
-    fn send_id(&mut self) -> io::Result<()> {
-        assert!(self.must_send_id());
-        let raw_id = binary::to_byte_array(self.id);
-        let w = self.stream.write(&raw_id[4 - self.pending_id_bytes..])?;
-        self.pending_id_bytes -= w;
+    fn send_greeting(&mut self) -> io::Result<()> {
+        assert!(self.must_send_greeting());
+        let written = self.stream.write(&self.pending_greeting)?;
+        self.pending_greeting.drain(..written);
         Ok(())
     }
 
@@ -305,6 +307,7 @@ impl Client {
     fn push_one_packet_to_network(&mut self, selector: &mut Selector) -> bool {
         match self.client_to_network.as_ipv4_packet() {
             Some(ref packet) => {
+                traffic_metrics::record_from_device(u64::from(packet.length()));
                 let mut client_channel = ClientChannel::new(
                     &mut self.network_to_client,
                     &self.stream,
@@ -354,7 +357,7 @@ impl Client {
         self.router.clean_expired_connections(selector);
     }
 
-    fn must_send_id(&self) -> bool {
-        self.pending_id_bytes > 0
+    fn must_send_greeting(&self) -> bool {
+        !self.pending_greeting.is_empty()
     }
 }

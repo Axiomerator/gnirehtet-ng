@@ -1,8 +1,11 @@
 <resources>
 
     <!-- Base application theme. -->
-    <style name="AppTheme">
-        <!-- Customize your theme here. -->
+    <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorOnPrimary">@color/on_primary</item>
+        <item name="colorPrimaryContainer">@color/primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/on_primary_container</item>
     </style>
 
     <style name="Theme.Transparent" parent="android:Theme">

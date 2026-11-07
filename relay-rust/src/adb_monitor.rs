@@ -16,6 +16,7 @@
 
 use log::*;
 use relaylib::byte_buffer::ByteBuffer;
+use relaylib::subprocess::configure_background;
 use std::io::{self, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::process;
@@ -207,10 +208,10 @@ impl AdbMonitor {
 
     fn start_adb_daemon() -> bool {
         info!(target: TAG, "Restarting adb daemon");
-        match process::Command::new("adb")
-            .args(&["start-server"])
-            .status()
-        {
+        let mut command = process::Command::new("adb");
+        command.args(&["start-server"]);
+        configure_background(&mut command);
+        match command.status() {
             Ok(exit_status) => {
                 if exit_status.success() {
                     true

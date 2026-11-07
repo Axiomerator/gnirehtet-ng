@@ -24,12 +24,15 @@ import android.util.Log;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.SocketTimeoutException;
 
 public final class RelayTunnel implements Tunnel {
 
     private static final String TAG = RelayTunnel.class.getSimpleName();
 
     private static final String LOCAL_ABSTRACT_NAME = "gnirehtet";
+    private static final int GREETING_HOSTNAME_LENGTH = 256;
+    private static final int GREETING_READ_TIMEOUT_MS = 1000;
 
     private final LocalSocket localSocket = new LocalSocket();
 
@@ -48,6 +51,7 @@ public final class RelayTunnel implements Tunnel {
     public void connect() throws IOException {
         localSocket.connect(new LocalSocketAddress(LOCAL_ABSTRACT_NAME));
         readClientId(localSocket.getInputStream());
+        readGreeting(localSocket);
     }
 
     /**
@@ -71,6 +75,32 @@ public final class RelayTunnel implements Tunnel {
         Log.d(TAG, "Requesting client id");
         int clientId = new DataInputStream(inputStream).readInt();
         Log.d(TAG, "Connected to the relay server as #" + Binary.unsigned(clientId));
+    }
+
+    /**
+     * After the client id, the Gnirehtet NG relay sends a fixed-size greeting (relay port and
+     * host name). Legacy relays stop after the client id, so tolerate a missing greeting with a
+     * short read timeout instead of blocking the tunnel forever.
+     */
+    private static void readGreeting(LocalSocket socket) throws IOException {
+        try {
+            socket.setSoTimeout(GREETING_READ_TIMEOUT_MS);
+            DataInputStream input = new DataInputStream(socket.getInputStream());
+            int relayPort = input.readUnsignedShort();
+            byte[] hostname = new byte[GREETING_HOSTNAME_LENGTH];
+            input.readFully(hostname);
+            int length = 0;
+            while (length < hostname.length && hostname[length] != 0) {
+                length++;
+            }
+            SessionInfo.setGreeting(relayPort, new String(hostname, 0, length, "UTF-8"));
+            Log.d(TAG, "Relay greeting: port " + relayPort);
+        } catch (SocketTimeoutException timeout) {
+            Log.w(TAG, "No relay greeting after the client id; assuming a legacy relay");
+            SessionInfo.setGreeting(0, "");
+        } finally {
+            socket.setSoTimeout(0);
+        }
     }
 
     @Override
@@ -100,8 +130,8 @@ public final class RelayTunnel implements Tunnel {
             }
             localSocket.close();
         } catch (IOException e) {
-            // what could we do?
-            throw new RuntimeException(e);
+            // Cleanup must never crash the VPN process; the socket is unusable either way.
+            Log.w(TAG, "Could not completely close relay tunnel", e);
         }
     }
 }

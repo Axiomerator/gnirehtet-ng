@@ -30,10 +30,10 @@ import java.net.InetAddress;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class Forwarder {
-
-    private static final ExecutorService EXECUTOR_SERVICE = Executors.newFixedThreadPool(3);
 
     private static final String TAG = Forwarder.class.getSimpleName();
 
@@ -44,17 +44,27 @@ public class Forwarder {
 
     private final FileDescriptor vpnFileDescriptor;
     private final PersistentRelayTunnel tunnel;
+    private final ExecutorService executorService = Executors.newFixedThreadPool(3);
+    private final AtomicBoolean stopped = new AtomicBoolean();
+    private final AtomicLong downBytes;
+    private final AtomicLong upBytes;
 
     private Future<?> deviceToTunnelFuture;
     private Future<?> tunnelToDeviceFuture;
 
-    public Forwarder(VpnService vpnService, FileDescriptor vpnFileDescriptor, RelayTunnelListener listener) {
+    public Forwarder(VpnService vpnService, FileDescriptor vpnFileDescriptor, RelayTunnelListener listener,
+            AtomicLong downBytes, AtomicLong upBytes) {
         this.vpnFileDescriptor = vpnFileDescriptor;
+        this.downBytes = downBytes;
+        this.upBytes = upBytes;
         tunnel = new PersistentRelayTunnel(vpnService, listener);
     }
 
     public void forward() {
-        deviceToTunnelFuture = EXECUTOR_SERVICE.submit(new Runnable() {
+        if (stopped.get()) {
+            throw new IllegalStateException("Cannot start a stopped forwarder");
+        }
+        deviceToTunnelFuture = executorService.submit(new Runnable() {
             @Override
             public void run() {
                 try {
@@ -66,7 +76,7 @@ public class Forwarder {
                 }
             }
         });
-        tunnelToDeviceFuture = EXECUTOR_SERVICE.submit(new Runnable() {
+        tunnelToDeviceFuture = executorService.submit(new Runnable() {
             @Override
             public void run() {
                 try {
@@ -81,10 +91,18 @@ public class Forwarder {
     }
 
     public void stop() {
+        if (!stopped.compareAndSet(false, true)) {
+            return;
+        }
         tunnel.close();
-        tunnelToDeviceFuture.cancel(true);
-        deviceToTunnelFuture.cancel(true);
+        if (tunnelToDeviceFuture != null) {
+            tunnelToDeviceFuture.cancel(true);
+        }
+        if (deviceToTunnelFuture != null) {
+            deviceToTunnelFuture.cancel(true);
+        }
         wakeUpReadWorkaround();
+        executorService.shutdown();
     }
 
     @SuppressWarnings("checkstyle:MagicNumber")
@@ -104,6 +122,7 @@ public class Forwarder {
                 if (version == 4) {
                     // blocking send
                     tunnel.send(buffer, r);
+                    upBytes.addAndGet(r);
                 } else {
                     // see <https://github.com/Genymobile/gnirehtet/issues/69>
                     Log.w(TAG, "Unexpected packet IP version: " + version);
@@ -131,6 +150,7 @@ public class Forwarder {
             if (w > 0) {
                 // blocking write
                 packetOutputStream.write(buffer, 0, w);
+                downBytes.addAndGet(w);
             } else {
                 Log.d(TAG, "Empty write");
             }
@@ -149,11 +169,10 @@ public class Forwarder {
      */
     private void wakeUpReadWorkaround() {
         // network actions may not be called from the main thread
-        EXECUTOR_SERVICE.execute(new Runnable() {
+        executorService.execute(new Runnable() {
             @Override
             public void run() {
-                try {
-                    DatagramSocket socket = new DatagramSocket();
+                try (DatagramSocket socket = new DatagramSocket()) {
                     InetAddress dummyAddr = InetAddress.getByAddress(DUMMY_ADDRESS);
                     DatagramPacket packet = new DatagramPacket(new byte[0], 0, dummyAddr, DUMMY_PORT);
                     socket.send(packet);

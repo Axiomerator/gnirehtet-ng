@@ -2,10 +2,10 @@
 
 ## First run
 
-Extract the Windows x64 portable ZIP from the release assets. Keep the files together. Launch `GnirehtetNg.Gui.exe` or `run.bat`. The folder contains the GUI, Rust controller, CLI and relay, signed Android APK, ADB files, and Windows runtime files.
+Extract the Windows x64 portable ZIP from the release assets. Keep the files together. Launch `GnirehtetNg.Gui.exe` or `run.bat`. The folder contains the GUI, Rust controller, CLI and relay, signed Android APK, ADB files, and the VC++ runtime files.
 
 The project's Apache 2.0 license and attribution are in `LICENSE` and `NOTICE`.
-The bundled ADB notice is in `adb/NOTICE.txt`, and Windows runtime terms and
+The bundled ADB notice is in `adb/NOTICE.txt`, and UI framework terms and
 notices are under `licenses/`. The app-local VC++ runtime files follow the
 [Visual Studio redistribution terms](https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution).
 
@@ -14,8 +14,10 @@ Enable USB debugging on the phone and authorize the computer. If multiple phones
 ## Controls and cleanup
 
 - **Stop** ends the current session. **Restart** tears it down and establishes it again.
-- Closing the GUI exits by default. If the GUI started the controller, exiting cleans up the managed session and stops the ADB server it uses. This can interrupt other tools using that server. Enable the tray setting if closing the window should keep the session active.
+- Closing the GUI exits by default. If the GUI started the controller, exiting cleans up the managed session and stops the ADB server it uses. This can interrupt other tools using that server. Enable **Close to notification area** in Windows Settings to keep the session active.
 - Delete the extracted folder to remove the desktop files. Local settings and logs are stored under `%LOCALAPPDATA%\GnirehtetNg`. Remove the Android app through Android Settings when you no longer need it.
+
+Set the theme to **System**, **Light**, or **Dark** in the Windows Settings page or the Android dashboard.
 
 ## Troubleshooting
 

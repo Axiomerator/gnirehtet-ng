@@ -11,9 +11,9 @@ Gnirehtet NG shares a Windows computer's internet connection with an Android pho
 3. Run `GnirehtetNg.Gui.exe` or `run.bat`, select the phone, and click **Start**.
 4. Approve Android's VPN prompt. The controller installs the bundled Android app when required.
 
-The portable build targets **Windows 11 x64**. The Android app's minimum API is 21 and its target API is 36. Compatibility with individual Android apps and vendor ROMs varies. To check USB-only connectivity, turn off Wi-Fi and mobile data on the phone and open a web page.
+The portable build targets **Windows 11 x64**. The Android app targets API 36 and requires Android 6.0 (API 23) or later. Compatibility with individual Android apps and vendor ROMs varies. To check USB-only connectivity, turn off Wi-Fi and mobile data on the phone and open a web page.
 
-The desktop dashboard shows connection status, traffic, logs, and diagnostics. Closing the window exits by default and tears down a session managed by that window's controller. Enable **Minimize to tray when the window closes** to keep it running.
+The desktop dashboard shows connection status, traffic, logs, and diagnostics. Both dashboards offer System, Light, and Dark themes. Closing the window exits by default and tears down a session managed by that window's controller. Enable **Close to notification area** to keep it running.
 
 See the [user guide](docs/deployment.md) for troubleshooting, Android updates, and HyperOS behavior.
 
@@ -21,9 +21,9 @@ See the [user guide](docs/deployment.md) for troubleshooting, Android updates, a
 
 | Path | Purpose |
 | --- | --- |
-| `windows/` | Native WinUI 3 desktop dashboard in C++/WinRT |
+| `windows/` | Slint and Rust desktop dashboard |
 | `relay-rust/` | Windows controller, CLI, and packet relay |
-| `app/` | Android VPN service and Material dashboard |
+| `app/` | Android VPN service and Mochi Compose dashboard |
 | `relay-java/` | Inherited Java relay and its tests |
 | `scripts/` | Development setup, builds, tests, and portable packaging |
 

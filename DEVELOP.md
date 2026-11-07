@@ -4,7 +4,7 @@ _Modified for Gnirehtet NG by the Gnirehtet NG contributors._
 
 ## Windows build setup
 
-Use Windows 11 x64 and Visual Studio 2022 with MSBuild, MSVC v143, the UWP C++ component group, and Windows SDK 10.0.26100.0. The repository uses Rust 1.98.0, Java 17, Android SDK 36, and Gradle Wrapper 8.11.1. The PowerShell setup scripts keep their downloads and caches inside the checkout. Run these from the repository root in Windows PowerShell.
+Use Windows 11 x64 and Visual Studio 2022 with MSVC v143 and the Windows SDK from the Desktop development with C++ workload. The repository uses Rust 1.98.0, Java 17, Android SDK 36, and Gradle Wrapper 8.13. The PowerShell setup scripts keep their downloads and caches inside the checkout. Run these from the repository root in Windows PowerShell.
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\bootstrap-rust.ps1
@@ -12,7 +12,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\bootstrap-andr
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\bootstrap-gradle.ps1
 ```
 
-The Android bootstrap installs the project-local SDK and accepts its license prompts. Read and accept the [Android SDK terms](https://developer.android.com/studio/terms) before running it. The Windows build downloads the pinned NuGet CLI on first use and verifies its Microsoft signature.
+The Android bootstrap installs the project-local SDK and accepts its license prompts. Read and accept the [Android SDK terms](https://developer.android.com/studio/terms) before running it.
 
 ## Build and test
 
@@ -24,7 +24,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-m3.ps1 -
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-m3.ps1 -Configuration Release
 ```
 
-`build-m3.ps1` builds Android and Rust via `build-m2.ps1`, compiles WinUI, and runs a no-device smoke test. Outputs go to `out/m2` and `out/m3/x64/Release`. For a separate development shell, run `. .\scripts\dev-shell.ps1` to set up the current PowerShell process. Run `cargo test --locked --manifest-path .\relay-rust\Cargo.toml` for Rust or `.\gradlew.bat :app:check` for Android.
+`build-m3.ps1` builds Android and Rust via `build-m2.ps1`, compiles the Slint desktop app, and runs a no-device smoke test. Outputs go to `out/m2` and `out/m3/x64/Release`. For a separate development shell, run `. .\scripts\dev-shell.ps1` to set up the current PowerShell process. Run `cargo test --locked --manifest-path .\relay-rust\Cargo.toml` for Rust or `.\gradlew.bat :app:check` for Android.
 
 For an end-to-end check, connect one authorized device, approve the VPN prompt, turn off Wi-Fi and mobile data, and verify real traffic through the tunnel. Check **Stop**, USB reconnect, and GUI exit on the intended Windows and Android builds.
 
@@ -54,21 +54,17 @@ For an end-to-end check, connect one authorized device, approve the VPN prompt, 
 
 ### Redistribution
 
-Use a newly built ZIP for each release. It includes the project's LICENSE and NOTICE,
-the Android Platform-Tools notice under `adb/`, and the license and notice files
-from the restored Windows runtime packages under `licenses/`.
-
+The ZIP includes the project's LICENSE and NOTICE, the ADB notice under
+`adb/`, and third-party UI license information under `licenses/`.
+The Windows About page includes the attribution required by the
+[Slint Royalty-free License](https://slint.dev/terms-and-conditions).
 - Review the [Android SDK terms](https://developer.android.com/studio/terms), sections
   3.4 and 3.5, and the component notices for the ADB binaries you ship.
-- Read section 3 of the bundled Windows App SDK license. Its redistribution terms
-  require distributors and external end users to agree to terms that protect
-  Microsoft and its code at least as much as the SDK terms. Arrange that agreement
-  through the release distribution channel.
 - Use the original x64 VC++ runtime DLLs from the Visual Studio `VC\Redist` tree.
   Check the terms for the installed Visual Studio edition and the
   [Visual Studio 2022 redistribution list](https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution)
   before distribution.
 
-Keep the ZIP, APK, signing files, toolchains, and diagnostic exports out of Git. The source checkout retains the Gradle Wrapper and Cargo lockfile so contributors can use the same build inputs.
+Keep the ZIP, APK, signing files, toolchains, and diagnostic exports out of Git. The source checkout retains the Gradle Wrapper and Cargo lockfiles so contributors can use the same build inputs.
 
 See the [system overview](docs/architecture/system.md) and the [upstream relay internals](https://github.com/Genymobile/gnirehtet/blob/1eb2e58bc91e268dba62561d11e3bebd9b100883/DEVELOP.md) for data-plane background.

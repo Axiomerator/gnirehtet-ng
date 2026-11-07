@@ -5,13 +5,11 @@
 /.cargo-target/
 /.gradle-home/
 .gradle/
+.kotlin/
 build/
 /out/
 /dist/
 target/
-/windows/**/obj/
-/windows/**/bin/
-**/Generated Files/
 *.apk
 *.aab
 *.exe

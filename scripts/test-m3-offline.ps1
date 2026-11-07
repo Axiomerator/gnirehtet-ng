@@ -58,14 +58,14 @@ try {
     $env:GNIREHTET_NG_RELAY = Join-Path $output 'gnirehtet-ng.exe'
     $env:GNIREHTET_NG_STATE_DIR = $stateDirectory
 
-    Write-Host '[m3-offline] launch WinUI without activating a phone session'
+    Write-Host '[m3-offline] launch Slint without activating a phone session'
     $launchedAt = Get-Date
     $guiProcess = Start-Process -FilePath $guiExecutable -WindowStyle Hidden -PassThru
     for ($attempt = 0; $attempt -lt 100; $attempt++) {
         if ($guiProcess.HasExited) {
             $startupLog = Join-Path $env:TEMP 'gnirehtet-ng-gui-startup-error.txt'
             $detail = if ((Test-Path -LiteralPath $startupLog) -and (Get-Item -LiteralPath $startupLog).LastWriteTime -ge $launchedAt) { Get-Content -Raw -LiteralPath $startupLog } else { 'No startup log was written.' }
-            throw "WinUI exited during startup with code $($guiProcess.ExitCode). $detail"
+            throw "Slint exited during startup with code $($guiProcess.ExitCode). $detail"
         }
         $core = Get-Process -Name 'gnirehtet-core' -ErrorAction SilentlyContinue
         if ($core) {
@@ -75,19 +75,19 @@ try {
         Start-Sleep -Milliseconds 100
     }
     if ($null -eq $corePid) {
-        throw 'WinUI did not auto-start the local controller within 10 seconds.'
+        throw 'Slint did not auto-start the local controller within 10 seconds.'
     }
 
     Write-Host '[m3-offline] verify authoritative snapshot and idle state'
     $status = Invoke-CliJson -Arguments @('status')
     if ($status.core_pid -ne $corePid -or $status.session_state -ne 'idle') {
-        throw 'WinUI-connected controller did not report the expected fresh idle snapshot.'
+        throw 'Slint-connected controller did not report the expected fresh idle snapshot.'
     }
     Start-Sleep -Seconds 2
     if ($guiProcess.HasExited) {
         $runtimeLog = Join-Path $env:TEMP 'gnirehtet-ng-gui-runtime-error.txt'
         $detail = if ((Test-Path -LiteralPath $runtimeLog) -and (Get-Item -LiteralPath $runtimeLog).LastWriteTime -ge $launchedAt) { Get-Content -Raw -LiteralPath $runtimeLog } else { 'No runtime log was written.' }
-        throw "WinUI exited while polling controller state. $detail"
+        throw "Slint exited while polling controller state. $detail"
     }
     $logs = Invoke-CliJson -Arguments @('logs', '--limit', '50')
     if (@($logs).Count -eq 0) {
@@ -110,7 +110,7 @@ try {
     Write-Host '[m3-offline] verify controller cleanup after GUI process exit'
     Stop-Process -Id $guiProcess.Id
     if (-not $guiProcess.WaitForExit(5000)) {
-        throw 'WinUI did not exit after the test stopped it.'
+        throw 'Slint did not exit after the test stopped it.'
     }
     $guiProcess = $null
     for ($attempt = 0; $attempt -lt 50; $attempt++) {
@@ -123,7 +123,7 @@ try {
     $corePid = $null
 
     Write-Host ''
-    Write-Host 'M3 no-device WinUI smoke test passed.'
+    Write-Host 'M3 no-device Slint smoke test passed.'
     Write-Host "Evidence directory: $stateDirectory"
 } finally {
     if ($null -ne $guiProcess -and -not $guiProcess.HasExited) {

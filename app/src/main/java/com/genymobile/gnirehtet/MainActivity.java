@@ -20,8 +20,6 @@ package com.genymobile.gnirehtet;
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.content.res.ColorStateList;
-import android.content.res.Configuration;
 import android.graphics.Color;
 import android.net.Uri;
 import android.net.VpnService;
@@ -29,25 +27,14 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.PowerManager;
 import android.util.Log;
-import android.view.View;
 import android.view.Window;
-import android.widget.Button;
-import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
-import androidx.core.view.WindowInsetsCompat;
-import androidx.core.view.WindowInsetsControllerCompat;
 
-import com.google.android.material.switchmaterial.SwitchMaterial;
 
-import java.util.Locale;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Material dashboard for Gnirehtet NG. The UI polls the VPN service state every second and
@@ -61,42 +48,15 @@ public class MainActivity extends AppCompatActivity {
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 1;
     private static final long REFRESH_PERIOD_MS = 1000;
     private static final long RESTART_DELAY_MS = 500;
-    private static final long BYTE_UNIT = 1024;
-    private static final long MILLIS_PER_SECOND = 1000;
-    private static final int STATUS_DOT_NOT_RUNNING = 0xFF9AA7A1;
-    private static final int STATUS_DOT_CONNECTING = 0xFFF2B531;
-    private static final int STATUS_DOT_CONNECTED = 0xFF34C759;
-
     private final Handler refreshHandler = new Handler(Looper.getMainLooper());
-
+    private final Runnable restartRunnable = this::requestStart;
     private VpnConfiguration requestedConfig;
-
-    private TextView statusText;
-    private View statusDot;
-    private TextView pcText;
-    private TextView downSpeed;
-    private TextView downTotal;
-    private TextView upSpeed;
-    private TextView upTotal;
-    private TextView uptimeText;
-    private TextView dnsValue;
-    private TextView routesValue;
-    private SwitchMaterial autoSwitch;
-    private Button startButton;
-    private Button stopButton;
-    private Button restartButton;
-    private Button diagnosticsButton;
-    private TextView batteryOptStatus;
-    private Button batteryOptButton;
-
-    private long lastDownBytes;
-    private long lastUpBytes;
-    private long lastSampleAtMs;
+    private DashboardUi dashboard;
 
     private final Runnable refreshRunnable = new Runnable() {
         @Override
         public void run() {
-            updateUi();
+            dashboard.refresh();
             refreshHandler.postDelayed(this, REFRESH_PERIOD_MS);
         }
     };
@@ -104,61 +64,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
-
         configureSystemBars();
-        applySystemBarInsets();
-
-        statusText = findViewById(R.id.status_text);
-        statusDot = findViewById(R.id.status_dot);
-        pcText = findViewById(R.id.pc_text);
-        downSpeed = findViewById(R.id.down_speed);
-        downTotal = findViewById(R.id.down_total);
-        upSpeed = findViewById(R.id.up_speed);
-        upTotal = findViewById(R.id.up_total);
-        uptimeText = findViewById(R.id.uptime_text);
-        dnsValue = findViewById(R.id.dns_value);
-        routesValue = findViewById(R.id.routes_value);
-        autoSwitch = findViewById(R.id.auto_switch);
-        startButton = findViewById(R.id.start_button);
-        stopButton = findViewById(R.id.stop_button);
-        restartButton = findViewById(R.id.restart_button);
-        diagnosticsButton = findViewById(R.id.diagnostics_button);
-        batteryOptStatus = findViewById(R.id.battery_opt_status);
-        batteryOptButton = findViewById(R.id.battery_opt_button);
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            batteryOptButton.setOnClickListener(view -> {
-                Intent intent = new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                        Uri.parse("package:" + getPackageName()));
-                try {
-                    startActivity(intent);
-                } catch (RuntimeException error) {
-                    Log.w(TAG, "Could not open battery optimization settings: " + error);
-                }
-            });
-        } else {
-            findViewById(R.id.background_reliability_card).setVisibility(View.GONE);
-        }
-
-        downSpeed.setText(formatBytes(0, true));
-        upSpeed.setText(formatBytes(0, true));
-        downTotal.setText(formatBytes(0));
-        upTotal.setText(formatBytes(0));
-
-        autoSwitch.setChecked(Settings.isAutoReconnectEnabled(this));
-        autoSwitch.setOnCheckedChangeListener((buttonView, isChecked) ->
-                Settings.setAutoReconnectEnabled(MainActivity.this, isChecked));
-
-        startButton.setOnClickListener(view -> requestStart());
-        stopButton.setOnClickListener(view -> GnirehtetService.stop(MainActivity.this));
-        restartButton.setOnClickListener(view -> {
-            GnirehtetService.stop(MainActivity.this);
-            refreshHandler.postDelayed(this::requestStart, RESTART_DELAY_MS);
-        });
-        diagnosticsButton.setOnClickListener(view -> exportDiagnostics());
-
-        updateUi();
+        dashboard = new DashboardUi(this);
         handleIntent(getIntent());
     }
 
@@ -179,7 +86,7 @@ public class MainActivity extends AppCompatActivity {
             requestedConfig = configFromIntent(intent);
             requestStart();
         } else if (GnirehtetActivity.ACTION_GNIREHTET_STOP.equals(action)) {
-            GnirehtetService.stop(this);
+            stopVpn();
         }
     }
 
@@ -195,30 +102,11 @@ public class MainActivity extends AppCompatActivity {
         return new VpnConfiguration(Net.toInetAddresses(dnsServers), Net.toCIDRs(routes));
     }
 
-    /**
-     * Draw edge-to-edge and let the system choose the correct system-bar icon contrast for
-     * the active theme: dark icons on the light background, light icons in dark mode.
-     */
     private void configureSystemBars() {
         Window window = getWindow();
         WindowCompat.setDecorFitsSystemWindows(window, false);
         window.setStatusBarColor(Color.TRANSPARENT);
         window.setNavigationBarColor(Color.TRANSPARENT);
-        int nightMode = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
-        boolean lightBackground = nightMode != Configuration.UI_MODE_NIGHT_YES;
-        WindowInsetsControllerCompat controller =
-                WindowCompat.getInsetsController(window, window.getDecorView());
-        controller.setAppearanceLightStatusBars(lightBackground);
-        controller.setAppearanceLightNavigationBars(lightBackground);
-    }
-
-    private void applySystemBarInsets() {
-        View root = findViewById(android.R.id.content);
-        ViewCompat.setOnApplyWindowInsetsListener(root, (view, windowInsets) -> {
-            Insets bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
-            view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
-            return WindowInsetsCompat.CONSUMED;
-        });
     }
 
     @Override
@@ -234,73 +122,33 @@ public class MainActivity extends AppCompatActivity {
         refreshHandler.removeCallbacks(refreshRunnable);
     }
 
-    private void updateUi() {
-        boolean running = GnirehtetService.isRunning();
-        boolean connected = GnirehtetService.isTunnelConnected();
-        int dotColor = STATUS_DOT_NOT_RUNNING;
-        if (!running) {
-            statusText.setText(R.string.status_not_running);
-        } else if (connected) {
-            statusText.setText(R.string.status_connected);
-            dotColor = STATUS_DOT_CONNECTED;
-        } else {
-            statusText.setText(R.string.status_connecting);
-            dotColor = STATUS_DOT_CONNECTING;
-        }
-        statusDot.setBackgroundTintList(ColorStateList.valueOf(dotColor));
-
-        String pcName = SessionInfo.getPcName();
-        if (running && !pcName.isEmpty()) {
-            pcText.setText(getString(R.string.pc_connected_format, pcName, SessionInfo.getRelayPort()));
-            pcText.setVisibility(View.VISIBLE);
-        } else {
-            pcText.setVisibility(View.GONE);
-        }
-
-        String dns = SessionInfo.getDnsServers();
-        dnsValue.setText(dns.isEmpty() ? getString(R.string.value_not_set) : dns);
-        String routes = SessionInfo.getRoutes();
-        routesValue.setText(routes.isEmpty() ? getString(R.string.value_not_set) : routes);
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
-            boolean batteryExempt = powerManager != null && powerManager.isIgnoringBatteryOptimizations(getPackageName());
-            batteryOptStatus.setText(batteryExempt
-                    ? R.string.battery_opt_exempt : R.string.battery_opt_not_exempt);
-            batteryOptButton.setVisibility(batteryExempt ? View.GONE : View.VISIBLE);
-        }
-
-        long now = System.currentTimeMillis();
-        long down = GnirehtetService.getDownBytes();
-        long up = GnirehtetService.getUpBytes();
-        long elapsed = Math.max(1, now - lastSampleAtMs);
-        if (lastSampleAtMs != 0) {
-            long downRate = (down - lastDownBytes) * MILLIS_PER_SECOND / elapsed;
-            long upRate = (up - lastUpBytes) * MILLIS_PER_SECOND / elapsed;
-            downSpeed.setText(formatBytes(downRate, true));
-            upSpeed.setText(formatBytes(upRate, true));
-        }
-        downTotal.setText(formatBytes(down));
-        upTotal.setText(formatBytes(up));
-        lastDownBytes = down;
-        lastUpBytes = up;
-        lastSampleAtMs = now;
-
-        long startedAt = GnirehtetService.getStartedAtMs();
-        if (running && startedAt != 0) {
-            long uptimeSeconds = TimeUnit.MILLISECONDS.toSeconds(now - startedAt);
-            uptimeText.setText(getString(R.string.uptime_format, formatUptime(uptimeSeconds)));
-            uptimeText.setVisibility(View.VISIBLE);
-        } else {
-            uptimeText.setVisibility(View.GONE);
-        }
-
-        startButton.setEnabled(!running);
-        stopButton.setEnabled(running);
-        restartButton.setEnabled(running);
+    @Override
+    protected void onDestroy() {
+        refreshHandler.removeCallbacks(restartRunnable);
+        super.onDestroy();
     }
 
-    private void requestStart() {
+    void stopVpn() {
+        refreshHandler.removeCallbacks(restartRunnable);
+        GnirehtetService.stop(this);
+    }
+
+    void restartVpn() {
+        stopVpn();
+        refreshHandler.postDelayed(restartRunnable, RESTART_DELAY_MS);
+    }
+
+    void openBatteryOptimization() {
+        Intent intent = new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                Uri.parse("package:" + getPackageName()));
+        try {
+            startActivity(intent);
+        } catch (RuntimeException error) {
+            Log.w(TAG, "Could not open battery optimization settings: " + error);
+        }
+    }
+
+    void requestStart() {
         if (GnirehtetService.isRunning()) {
             return;
         }
@@ -358,7 +206,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void exportDiagnostics() {
+    void exportDiagnostics() {
         StringBuilder summary = new StringBuilder();
         summary.append("Gnirehtet NG diagnostics\n");
         summary.append("running=").append(GnirehtetService.isRunning()).append('\n');
@@ -379,38 +227,5 @@ public class MainActivity extends AppCompatActivity {
         share.putExtra(Intent.EXTRA_SUBJECT, getString(R.string.diagnostics_subject));
         share.putExtra(Intent.EXTRA_TEXT, summary.toString());
         startActivity(Intent.createChooser(share, getString(R.string.action_diagnostics)));
-    }
-
-    @SuppressWarnings("checkstyle:MagicNumber")
-    private static String formatBytes(long bytes) {
-        return formatBytes(bytes, false);
-    }
-
-    @SuppressWarnings("checkstyle:MagicNumber")
-    private static String formatBytes(long bytes, boolean perSecond) {
-        if (bytes < BYTE_UNIT) {
-            return bytes + " B" + (perSecond ? "/s" : "");
-        }
-        double value = bytes;
-        String[] units = {"KiB", "MiB", "GiB", "TiB"};
-        int unit = -1;
-        while (value >= BYTE_UNIT && unit + 1 < units.length) {
-            value /= BYTE_UNIT;
-            unit++;
-        }
-        return String.format(Locale.US, "%.1f %s%s", value, units[unit], perSecond ? "/s" : "");
-    }
-
-    @SuppressWarnings("checkstyle:MagicNumber")
-    private static String formatUptime(long seconds) {
-        if (seconds < 60) {
-            return seconds + "s";
-        }
-        long minutes = seconds / 60;
-        if (minutes < 60) {
-            return minutes + "m " + (seconds % 60) + "s";
-        }
-        long hours = minutes / 60;
-        return hours + "h " + (minutes % 60) + "m";
     }
 }

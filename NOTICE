@@ -12,3 +12,9 @@ The original copyright and license notices are retained in the source files and
 in LICENSE. Changes made for Gnirehtet NG are documented in this repository.
 
 Upstream project: https://github.com/Genymobile/gnirehtet
+
+The Windows application uses Slint (SixtyFPS GmbH) under the Slint Royalty-free
+Desktop, Mobile, and Web Applications License. https://slint.dev/
+
+The Android dashboard uses Mochi Compose by feice11 and contributors under the
+Apache License, Version 2.0. https://github.com/feice11/mochi-compose

@@ -377,7 +377,15 @@ fn fit_logs_response(
 }
 
 pub fn send_request(request: &Request) -> io::Result<Response> {
+    send_request_checked(request, |_| Ok(()))
+}
+
+pub fn send_request_checked(
+    request: &Request,
+    verify_peer: impl FnOnce(&File) -> io::Result<()>,
+) -> io::Result<Response> {
     let pipe = open_client_pipe()?;
+    verify_peer(&pipe)?;
     let mut encoded = serde_json::to_vec(request)?;
     if encoded.len() > MAX_MESSAGE_BYTES {
         return Err(io::Error::new(

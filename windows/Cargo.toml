@@ -1,0 +1,26 @@
+[package]
+name = "gnirehtet-ng-desktop"
+version = "0.2.0"
+edition = "2024"
+license = "Apache-2.0"
+build = "build.rs"
+
+[[bin]]
+name = "gnirehtet-ui"
+path = "src/main.rs"
+
+[dependencies]
+relaylib = { package = "gnirehtet-ng", path = "../relay-rust" }
+slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-software", "accessibility", "system-tray"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+arboard = { version = "3.6", default-features = false }
+
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Pipes", "Win32_System_Threading"] }
+
+[build-dependencies]
+slint-build = "=1.18.1"
+
+[profile.release]
+lto = "thin"
+strip = "debuginfo"

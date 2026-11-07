@@ -2,7 +2,7 @@
 
 ## Control plane
 
-The WinUI 3 GUI and `gnirehtet-cli.exe` send JSON requests to `gnirehtet-core.exe` over a local Windows named pipe. The Rust controller selects an authorized device, installs the Android client when needed, starts the relay, and creates a device-scoped ADB reverse mapping. Windows renders the controller's snapshots, traffic measurements, and structured logs.
+The Slint desktop app and `gnirehtet-cli.exe` send JSON requests to `gnirehtet-core.exe` over a local Windows named pipe. The Rust controller selects an authorized device, installs the Android client when needed, starts the relay, and creates a device-scoped ADB reverse mapping. Windows renders the controller's snapshots, traffic measurements, and structured logs.
 
 The controller tracks device availability, APK, reverse mapping, Android process, VPN service, relay and connectivity health. Its watchdog classifies failures and applies bounded retries when auto-reconnect is enabled. If connectivity degrades while the tunnel is healthy, the controller reports the degraded status. The controller can export a local diagnostic ZIP.
 

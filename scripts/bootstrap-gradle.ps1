@@ -8,10 +8,10 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $repoPrefix = $repoRoot.TrimEnd('\') + '\'
-$gradleVersion = '8.11.1'
+$gradleVersion = '8.13'
 $distributionName = "gradle-$gradleVersion-bin"
 $distributionUrl = "https://downloads.gradle.org/distributions/$distributionName.zip"
-$expectedSha256 = 'f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6'
+$expectedSha256 = '20f1b1176237254a6fc204d8434196fa11a4cfb387567519c61556e8710aed78'
 $archive = Join-Path $repoRoot ".tools\downloads\$distributionName.zip"
 
 function Assert-WorkspacePath {
@@ -37,7 +37,7 @@ if ($actualSha256 -ne $expectedSha256) {
 # This key is Gradle Wrapper's stable base-36 MD5 mapping for the pinned URL in
 # gradle-wrapper.properties. Keeping it explicit avoids invoking an untrusted or
 # incomplete distribution merely to discover its cache directory.
-$wrapperCacheKey = 'bpt9gzteqjrbo1mjrsomdt32c'
+$wrapperCacheKey = '928fl043lon0uu06jzrrnc41m'
 $cacheRoot = Assert-WorkspacePath (Join-Path $env:GRADLE_USER_HOME "wrapper\dists\$distributionName\$wrapperCacheKey")
 $expandedDistribution = Join-Path $cacheRoot "gradle-$gradleVersion"
 $okMarker = Join-Path $cacheRoot "$distributionName.zip.ok"

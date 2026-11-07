@@ -31,4 +31,8 @@
     <string name="battery_opt_exempt">Optimisation de la batterie Android désactivée</string>
     <string name="battery_opt_not_exempt">Optimisation de la batterie Android active</string>
     <string name="action_authorize_battery_opt">Désactiver l’optimisation de la batterie</string>
+    <string name="appearance">Apparence</string>
+    <string name="appearance_system">Système</string>
+    <string name="appearance_light">Clair</string>
+    <string name="appearance_dark">Sombre</string>
 </resources>

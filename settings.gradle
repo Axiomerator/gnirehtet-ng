@@ -1,1 +1,2 @@
 include ':app', ':relay-java', ':relay-rust'
+rootProject.name = 'gnirehtet-ng'
